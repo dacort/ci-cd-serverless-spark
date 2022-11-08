@@ -1,0 +1,384 @@
+# This template is used to update the stack created by canary1_001.yaml
+AWSTemplateFormatVersion: 2010-09-09
+Description: EMR Serverless Application stack
+
+Parameters:
+  GitHubRepo:
+    Default: "your_name/repo_name"
+    Description: The GitHub Repository that is allowed to assume your GitHub OIDC Role (<username|org>/<repo> - repo can be *)
+    Type: String
+
+  CreateOIDCProvider:
+    Default: true
+    Description: Only one Provider for a specific URL can be created per account, choose false if your account already has a GitHub OIDC Provider
+    Type: String
+    AllowedValues:
+      - true
+      - false
+
+Conditions:
+  # Create a condition that matches on the parameter string value being treated
+  # as true/on.
+  ShouldCreateOIDCProvider: !Equals [!Ref CreateOIDCProvider, true]
+
+Resources:
+  ## Resources for Production Deployments - EMR Serverless Spark app and S3 bucket for artifacts/logs
+  ProductionSparkApplication:
+    Type: AWS::EMRServerless::Application
+    Properties:
+      Name: prod-spark
+      ReleaseLabel: emr-6.8.0
+      Type: Spark
+      MaximumCapacity:
+        Cpu: 200 vCPU
+        Memory: 100 GB
+
+  ProductionArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub gh-actions-serverless-spark-prod-${AWS::AccountId}
+
+  ### Resources for Test Deployments - EMR Serverless Spark app and S3 bucket for artifacts/logs
+  TestSparkApplication:
+    Type: AWS::EMRServerless::Application
+    Properties:
+      Name: test-spark
+      ReleaseLabel: emr-6.8.0
+      Type: Spark
+      MaximumCapacity:
+        Cpu: 200 vCPU
+        Memory: 100 GB
+      AutoStartConfiguration:
+        Enabled: true
+      AutoStopConfiguration:
+        Enabled: true
+        IdleTimeoutMinutes: 100
+      InitialCapacity:
+        - Key: Driver
+          Value:
+            WorkerCount: 1
+            WorkerConfiguration:
+              Cpu: 1 vCPU
+              Memory: 4 GB
+              Disk: 20 GB
+        - Key: Executor
+          Value:
+            WorkerCount: 4
+            WorkerConfiguration:
+              Cpu: 1 vCPU
+              Memory: 4 GB
+              Disk: 20 GB
+
+  TestArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub gh-actions-serverless-spark-test-${AWS::AccountId}
+
+  ### A bucket for sample data
+  SampleDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub gh-actions-serverless-spark-data-${AWS::AccountId}
+
+  ### IAM Roles - We only use one role for the demo
+  # The role has
+  # - read/write access to the Glue Data Catalog
+  # - read access to the S3 sample data bucket
+  # - write access to the prod/test buckets
+  EMRServerlessJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - emr-serverless.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      Description: "Service role for EMR Serverless jobs"
+      RoleName: !Sub gh-actions-job-execution-role-${AWS::AccountId}
+      Policies:
+        - PolicyName: GlueAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "glue:GetDatabase"
+                  - "glue:GetDataBases"
+                  - "glue:CreateTable"
+                  - "glue:GetTable"
+                  - "glue:GetTables"
+                  - "glue:GetPartition"
+                  - "glue:GetPartitions"
+                  - "glue:CreatePartition"
+                  - "glue:BatchCreatePartition"
+                  - "glue:GetUserDefinedFunctions"
+                Resource: "*"
+        - PolicyName: S3Access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "s3:ListBucket"
+                Resource:
+                  - !GetAtt SampleDataBucket.Arn
+                  - !GetAtt TestArtifactsBucket.Arn
+                  - !GetAtt ProductionArtifactsBucket.Arn
+              - Effect: Allow
+                Action:
+                  - "s3:GetObject"
+                Resource:
+                  - !Sub "${SampleDataBucket.Arn}/*"
+                  - !Sub "${TestArtifactsBucket.Arn}/*"
+                  - !Sub "${ProductionArtifactsBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - "s3:PutObject"
+                Resource:
+                  - !Sub "${TestArtifactsBucket.Arn}/*"
+                  - !Sub "${ProductionArtifactsBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - "s3:DeleteObject"
+                Resource:
+                  - !Sub "${ProductionArtifactsBucket.Arn}/github/output/*"
+
+  ### GitHub OIDC Provider
+  GithubOidc:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ThumbprintList: [15e29108718111e59b3dad31954647e3c344a231]
+      ClientIdList:
+        - sts.amazonaws.com
+
+  ### This is the role that GitHub uses to
+  # - Start EMR Serverless Jobs
+  # - Upload artifacts to S3
+  GitHubOIDCRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: "sts:AssumeRoleWithWebIdentity"
+            Condition:
+              StringLike:
+                "token.actions.githubusercontent.com:sub": !Sub "repo:${GitHubRepo}:*"
+              "ForAllValues:StringEquals":
+                "token.actions.githubusercontent.com:iss": "https://token.actions.githubusercontent.com"
+                "token.actions.githubusercontent.com:aud": sts.amazonaws.com
+            Effect: Allow
+            Principal:
+              Federated:
+                !If [
+                  ShouldCreateOIDCProvider,
+                  !Ref GithubOidc,
+                  !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com",
+                ]
+        Version: 2012-10-17
+      RoleName: !Sub gh-actions-oidc-role-${AWS::AccountId}
+      Description: >-
+        This role is used via GitHub Actions to deploy and run Spark jobs
+      MaxSessionDuration: 3600
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - "emr-serverless:DescribeApplication"
+                  - "emr-serverless:GetJobRun"
+                  - "emr-serverless:StartApplication"
+                  - "emr-serverless:StartJobRun"
+                Effect: Allow
+                Resource:
+                  - !GetAtt
+                    - ProductionSparkApplication
+                    - Arn
+                  - !GetAtt
+                    - TestSparkApplication
+                    - Arn
+              - Action: "emr-serverless:GetJobRun"
+                Effect: Allow
+                Resource:
+                  - !Sub "${ProductionSparkApplication.Arn}/jobruns/*"
+                  - !Sub "${TestSparkApplication.Arn}/jobruns/*"
+              - Action: "iam:PassRole"
+                Condition:
+                  StringLike:
+                    "iam:PassedToService": emr-serverless.amazonaws.com
+                Effect: Allow
+                Resource: !GetAtt
+                  - EMRServerlessJobRole
+                  - Arn
+            Version: 2012-10-17
+          PolicyName: EMRServerlessAccess
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - "s3:ListBucket"
+                Effect: Allow
+                Resource: "*"
+              - Action:
+                  - "s3:PutObject"
+                Effect: Allow
+                Resource:
+                  - !Sub "${ProductionArtifactsBucket.Arn}/github/pyspark/jobs/*"
+                  - !Sub "${TestArtifactsBucket.Arn}/github/pyspark/jobs/*"
+            Version: 2012-10-17
+          PolicyName: S3Access
+
+  ### Finally, we create a Lambda function to generate some sample data
+  S3CustomResource:
+    Type: Custom::S3CustomResource
+    Properties:
+      ServiceToken: !GetAtt SampleDataGenerator.Arn
+      the_bucket: !Ref SampleDataBucket
+
+  AWSLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: "2012-10-17"
+      Path: "/"
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Effect: Allow
+                Resource: arn:aws:logs:*:*:*
+            Version: "2012-10-17"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-AWSLambda-CW
+        - PolicyDocument:
+            Statement:
+              - Action:
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:List*
+                Effect: Allow
+                Resource:
+                  - !Sub "${SampleDataBucket.Arn}/*"
+                  - !GetAtt SampleDataBucket.Arn
+            Version: "2012-10-17"
+          PolicyName: !Sub ${AWS::StackName}-${AWS::Region}-AWSLambda-S3
+
+  SampleDataGenerator:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Description: "Generate sample data"
+      Handler: index.handler
+      Role: !GetAtt AWSLambdaExecutionRole.Arn
+      Timeout: 360
+      Runtime: python3.9
+      Code:
+        ZipFile: |
+          import boto3
+          import cfnresponse
+          import json
+          import random
+          from datetime import datetime, timedelta
+          from functools import cache
+
+
+          class Repository:
+              def __init__(self, name, start_date):
+                  self.org = name.split("/")[0]
+                  self.repo = name.split("/")[1]
+                  self.start_date = self._str_to_date(start_date)
+                  self.seed_base = f"{name}/{start_date}/"
+
+              def views_data(self, since, until):
+                  since = self._str_to_date(since)
+                  if since < self.start_date:
+                      since = self.start_date
+                  until = self._str_to_date(until)
+                  if until > datetime.now().date():
+                      until = datetime.now().date()
+                  data = []
+                  for i in range(0, (until - since).days + 1):
+                      stat_date = since + timedelta(days=i)
+                      row = {
+                          "timestamp": stat_date.strftime("%Y-%m-%d 21:35:40"),
+                          "utcisonow": stat_date.strftime("%Y-%m-%dT21:35:40.557003"),
+                          "repo": f"{self.org}/{self.repo}",
+                          "path": "views",
+                          "stats": {"count": 0, "uniques": 0, "views": []},
+                      }
+                      prev_14d = stat_date + timedelta(days=-14)
+                      if prev_14d < self.start_date:
+                          prev_14d = self.start_date
+                      for i in range(0, (stat_date - prev_14d).days + 1):
+                          prev_date = prev_14d + timedelta(days=i)
+                          row["stats"]["views"].append(
+                              self._stat_for_date(prev_date, prev_date == stat_date)
+                          )
+                      row["stats"]["count"] = sum([v["count"] for v in row["stats"]["views"]])
+                      max_possible_uniques = sum([v["uniques"] for v in row["stats"]["views"]])
+                      row["stats"]["uniques"] = int(max_possible_uniques * 0.2)
+                      data.append(row)
+                  return data
+
+              def _str_to_date(self, s: str) -> datetime.date:
+                  return datetime.strptime(s, "%Y-%m-%d").date()
+
+              @cache
+              def _stat_for_date(self, d: datetime.date, cache: bool = True):
+                  seed_val = d.toordinal() * 1000
+                  if cache:
+                      seed_val += 1
+                  random.seed(f"{self.seed_base}/{seed_val}")
+                  count = random.randint(0, 1000)
+                  uniques = random.randint(0, count - 1 if count > 0 else 0)
+                  return {
+                      "timestamp": d.strftime("%Y-%m-%dT00:00:00Z"),
+                      "count": count,
+                      "uniques": uniques,  # uniques can't be more than count
+                  }
+
+
+          def handler(event, context):
+              the_event = event["RequestType"]
+              response_data = {}
+              s3 = boto3.client("s3")
+              the_bucket = event["ResourceProperties"]["the_bucket"]
+              try:
+                  if the_event in ("Create", "Update"):
+                      for repo in [
+                          "dacort/ci-cd-serverless-spark",
+                          "aws-samples/emr-serverless-samples",
+                      ]:
+                          d = ""
+                          r = Repository(repo, "2022-01-01")
+                          for day in r.views_data("2022-06-01", datetime.now().strftime("%Y-%m-%d")):
+                              d += json.dumps(day) + "\n"
+                          s3.put_object(Body=d, Bucket=the_bucket, Key=f"github/traffic/{repo}/views.json")
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+              except Exception as e:
+                  response_data["Data"] = str(e)
+                  cfnresponse.send(event, context, cfnresponse.FAILED, response_data)
+
+Outputs:
+  ProductionApplicationId:
+    Value: !Ref ProductionSparkApplication
+  ProductionS3Bucket:
+    Value: !Ref ProductionArtifactsBucket
+  TestApplicationId:
+    Value: !Ref TestSparkApplication
+  TestS3Bucket:
+    Value: !Ref TestArtifactsBucket
+  EMRServerlessJobExecutionRoleArn:
+    Value: !GetAtt EMRServerlessJobRole.Arn
+  GitHubOIDCRoleArn:
+    Value: !GetAtt GitHubOIDCRole.Arn

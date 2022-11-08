@@ -1,0 +1,40 @@
+name: PySpark Integration Tests
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+env:
+  TEST_APPLICATION_ID: 00f5d4nlmsrkb509
+  SAMPLE_DATA_S3_BUCKET_NAME: gh-actions-serverless-spark-data-${{ secrets.AWS_ACCOUNT_ID }}
+  TEST_S3_BUCKET_NAME: gh-actions-serverless-spark-test-${{ secrets.AWS_ACCOUNT_ID }}
+  JOB_ROLE_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/gh-actions-job-execution-role-${{ secrets.AWS_ACCOUNT_ID }}
+  OIDC_ROLE_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/gh-actions-oidc-role-${{ secrets.AWS_ACCOUNT_ID }}
+  AWS_REGION: us-east-1
+      
+jobs:
+  deploy-and-validate:
+    runs-on: ubuntu-latest
+    # These permissions are needed to interact with GitHub's OIDC Token endpoint.
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: ./pyspark
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configure AWS credentials from Test account
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          role-to-assume: ${{ env.OIDC_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Copy pyspark file to S3
+        run: |
+          echo Uploading $GITHUB_SHA to S3
+          cd jobs && zip -r job_files.zip . && cd ..
+          aws s3 sync jobs s3://$TEST_S3_BUCKET_NAME/github/pyspark/jobs/$GITHUB_SHA/
+
+      - name: Start pyspark job
+        run: |
+          scripts/integration_test.sh $TEST_APPLICATION_ID $JOB_ROLE_ARN $TEST_S3_BUCKET_NAME $GITHUB_SHA validation.py s3://${SAMPLE_DATA_S3_BUCKET_NAME}/github/traffic/

@@ -1,0 +1,22 @@
+name: Spark Job Unit Tests
+on: [push]
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./pyspark
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set up Python 3.7.10
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.7.10
+        cache: 'pip'
+        cache-dependency-path: '**/requirements-dev.txt'
+    - name: Install dependencies
+      run: |
+        python -m pip install -r requirements-dev.txt
+    - name: Analysing the code with pytest
+      run: |
+        python3 -m pytest
