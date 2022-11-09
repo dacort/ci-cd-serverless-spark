@@ -12,7 +12,9 @@ This is the code used for my [GitHub Universe presentation](https://githubuniver
 
 You can create all of these, including some sample data, using the included [CloudFormation template](template.cfn.yaml).
 
-> Note: The IAM roles created in the template are _very tightly scoped_ to the relevant S3 Buckets and EMR Serverless applications created by the stack.
+> **Warning** 💰 The CloudFormation template creates EMR Serverless applications that you will be charged for when integration tests **AND** the scheduled workflow runs.
+
+> **Note** The IAM roles created in the template are _very tightly scoped_ to the relevant S3 Buckets and EMR Serverless applications created by the stack.
 
 ## Setup
 
@@ -35,7 +37,7 @@ aws cloudformation create-stack \
 
 Go to your repository settings, find `Secrets` on the left-hand side, then `Actions`. Click "New repository secret" and add a secret named `AWS_ACCOUNT_ID` with your 12 digit AWS Account ID.
 
-> Note: This is not sensitive info, just makes it easier to re-use the Actions.
+> **Note** This is not sensitive info, just makes it easier to re-use the Actions.
 
 3. Update the Application IDs
 
@@ -43,6 +45,10 @@ Go to your repository settings, find `Secrets` on the left-hand side, then `Acti
 - In `run-job.yaml`, replace `PROD_APPLICATION_ID` with the `ProductionApplicationId` output from the CloudFormation stack
 
 The rest of the environment variables in your workflows should stay the same unless you deployed in a region other than `us-east-1`.
+
+With that done, you should be able to experiment with pushing new commits to the repo, opening pull requests, and running the "Fetch Data" workflow.
+
+You can view the status of your job runs in the [EMR Serverless console](https://console.aws.amazon.com/emr/home#/serverless).
 
 ## Overview
 
