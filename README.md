@@ -2,6 +2,11 @@
 
 This is the code used for my [GitHub Universe presentation](https://githubuniverse.com/events/detail/virtual-schedule/0a4737d4-4e63-4b50-8) on using GitHub Actions with EMR Serverless.
 
+## Other resources
+
+- [EMR Serverless User Guide](https://docs.aws.amazon.com/emr/latest/EMR-Serverless-UserGuide/emr-serverless.html)
+- [EMR Serverless Samples](https://github.com/aws-samples/emr-serverless-samples/)
+
 ## Pre-requisites
 
 - An AWS Account with Admin privileges
