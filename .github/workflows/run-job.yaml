@@ -21,7 +21,7 @@ on:
 
 jobs:
   github-views:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     # These permissions are needed to interact with GitHub's OIDC Token endpoint.
     permissions:
       id-token: write
