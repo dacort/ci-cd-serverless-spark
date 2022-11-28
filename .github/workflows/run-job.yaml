@@ -1,11 +1,11 @@
 name: Fetch Data
 
 env:
-  PROD_APPLICATION_ID: 00f5d4nlks2bok09
-  SAMPLE_DATA_S3_BUCKET_NAME: gh-actions-serverless-spark-data-${{ secrets.AWS_ACCOUNT_ID }}
-  PROD_S3_BUCKET_NAME: gh-actions-serverless-spark-prod-${{ secrets.AWS_ACCOUNT_ID }}
-  JOB_ROLE_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/gh-actions-job-execution-role-${{ secrets.AWS_ACCOUNT_ID }}
-  OIDC_ROLE_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/gh-actions-oidc-role-${{ secrets.AWS_ACCOUNT_ID }}
+  PROD_APPLICATION_ID: 00f5trm3rnk3hl09
+  SAMPLE_DATA_S3_BUCKET_NAME: ant309-prod-${{ secrets.AWS_ACCOUNT_ID }}
+  PROD_S3_BUCKET_NAME: ant309-prod-${{ secrets.AWS_ACCOUNT_ID }}
+  JOB_ROLE_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/reinvent-demo-EMRServerlessJobRole-1PEFB3BVE11PV
+  OIDC_ROLE_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/reinvent-demo-GitHubOIDCRole-17QJZ0JHMZMHU
   AWS_REGION: us-east-1
   JOB_VERSION: v0.0.4
 
