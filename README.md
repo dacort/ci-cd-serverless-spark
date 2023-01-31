@@ -1,6 +1,6 @@
 # Serverless Spark CI/CD on AWS with GitHub Actions
 
-This is the code used for my [GitHub Universe presentation](https://githubuniverse.com/events/detail/virtual-schedule/0a4737d4-4e63-4b50-8) on using GitHub Actions with EMR Serverless.
+This is the code used for my [GitHub Universe presentation](https://www.youtube.com/watch?v=Ydgk_V4r5jw) on using GitHub Actions with EMR Serverless.
 
 There is also a workshop you can use with step-by-step instructions: [Build analytics applications using Apache Spark with Amazon EMR Serverless](https://catalog.us-east-1.prod.workshops.aws/workshops/87bdf4a6-4356-411f-9b21-f8b7e4d02d4c/en-US)
 
